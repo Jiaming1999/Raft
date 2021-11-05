@@ -6,3 +6,4 @@ class State:
         self.term = term
         self.leader = leader
         self.state = state
+        self.votes = 0

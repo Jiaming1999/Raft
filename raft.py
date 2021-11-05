@@ -17,7 +17,7 @@ pid = int(sys.argv[1])
 n = int(sys.argv[2])  # num of nodes in total
 majority = n // 2 + 1  # majority of the cluster
 pstate = State()
-hasVoted = defaultdict(bool, False)
+hasElected = defaultdict(bool, False)
 
 
 print(f"Starting raft node {pid}", file=sys.stderr)
@@ -34,12 +34,10 @@ def IamFollower():
         heardFrom = int(content[1])
         term = int(content[3])
         if term <= pstate.term:
-            # refuse
+            #TODO: refuse
             return
-        if hasVoted[term] == True:
-            # refuse
-            return
-        # agree
+        #TODO: agree
+        pstate.term = term
         return
     elif HeartBeat in line:
         # reset　timeout
@@ -59,20 +57,44 @@ def IamLeader():
 def IamCandidate():
     line = sys.stdin.readline()
     if RequestRPC in line:
-        # send refuse
-        pass
+        # TODO: send refuse if term <= myterm, else agree
+        line = line.strip("\n")
+        content = line.split(" ")
+        heardFrom = int(content[1])
+        term = int(content[3])
+        if term <= pstate.term:
+            # TODO: send refuse to heardFrom
+            pass
+        else:
+            # TODO: agree to heardFrom
+            pstate.term = term
+            pstate.state = FOLLOWER
+            return
     elif RequestRPCResponse in line:
-        # collect votes
-        pass
+        line = line.strip('\n')
+        content = line.split(" ")
+        result = content[-1]
+        term = int(content[3])
+        if result == 'true' and pstate.term == term:
+            pstate.votes += 1
+        if pstate.votes >= majority:
+            # TODO: announce leader
+            pstate.state = LEADER
+            pstate.votes = 0
+        return
     # send RPC Request Vote, start the election
-    election()
+    if hasElected[pstate.term] == False:
+        election()
+        hasElected[pstate.term] = True
 
 
 def sendHB():
+  # TODO: send heartbeat to all non leader nodes
     pass
 
 
 def election():
+  # TODO: start an election
     pass
 
 
