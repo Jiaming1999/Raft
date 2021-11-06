@@ -15,6 +15,7 @@ RECEIVE = "RECEIVE"
 RequestRPC = "RequestVotes"
 RequestRPCResponse = "RequestVoteResponse"
 HeartBeat = "Heartbeat"
+true = "true"
 
 STATE_term = "STATE term="
 STATE_state = "STATE state="
@@ -54,20 +55,46 @@ def followerOnReceive():
     global hasHB
     line = sys.stdin.readline()
     if RequestRPC in line:
-        # send agree if not vote before, else refuse
+        # i response to candidate
+        # send agree if not vote before, else refuse(No refuse, only timeout)
         line = line.strip("\n")
         content = line.split(" ")
         heardFrom = int(content[1])
         term = int(content[3])
-        if term <= pstate.term:
-            #TODO: refuse
-            return
-        #TODO: agree
-        pstate.term = term
+
+        # I agree if received term is higher than mine, else i do nothing
+        if term > pstate.term:
+            #TODO: agree
+            # send my agree to sender
+            print(f"{SEND} {heardFrom} {RequestRPCResponse} {term} {true}")
+
+            # update my term to the latest term
+            pstate.term = term
         return
     elif HeartBeat in line:
+        # I response to leader
+        line = line.strip("\n")
+        content = line.split(" ")
+        heardFrom = int(content[1])
+        term = int(content[3])
+
         # reset　timeout
         hasHB = True
+
+        # update term and print term
+        pstate.term = term
+        print(f"{STATE_term}{pstate.term}")
+
+        # update state and print state
+        pstate.state = FOLLOWER
+        print(f"{STATE_state}{pstate.state}")
+
+        # update leader
+        pstate.leader = heardFrom
+        print(f"{STATE_leader}{pstate.leader}")
+
+        # update lastheard time
+
         return
 
 
@@ -89,13 +116,14 @@ def IamCandidate():
 
     # DEBUG: the program stuck at the following line
 
-    monitorCandidate = threading.Thread(target=candidateReceive, args=())
-    monitorCandidate.start()
-    monitorCandidate.join(timeout=TIMEOUT)
     # send RPC Request Vote, start the election
     if hasElected[pstate.term] == False:
         startElection()
         hasElected[pstate.term] = True
+
+    monitorCandidate = threading.Thread(target=candidateReceive, args=())
+    monitorCandidate.start()
+    monitorCandidate.join(timeout=TIMEOUT)
 
 
 def candidateReceive():
@@ -104,19 +132,22 @@ def candidateReceive():
     line = sys.stdin.readline()
 
     if RequestRPC in line:
-        # TODO: send refuse if term <= myterm, else agree
+        # TODO: send refuse(no refuse, no thing) if term <= myterm, else agree
         line = line.strip("\n")
         content = line.split(" ")
         heardFrom = int(content[1])
         term = int(content[3])
-        if term <= pstate.term:
-            # TODO: send refuse to heardFrom
-            pass
-        else:
+        if pstate.term < term:
             # TODO: agree to heardFrom
             pstate.term = term
             pstate.state = FOLLOWER
-            return
+            # send agree
+            print(f"{SEND} {heardFrom} {RequestRPCResponse} {term} {true}")
+            # print term state
+            print(f"{STATE_term}{pstate.term}")
+            # print follower state
+            print(f"{STATE_state}{pstate.state}")
+        return
     elif RequestRPCResponse in line:
         line = line.strip('\n')
         content = line.split(" ")
@@ -128,6 +159,10 @@ def candidateReceive():
             # TODO: announce leader
             pstate.state = LEADER
             pstate.votes = 0
+            pstate.leader = pid
+
+            print(f"{STATE_state}{pstate.state}")
+            print(f"{STATE_leader}{pstate.leader}")
         return
 
 
@@ -137,8 +172,8 @@ def sendHB():
     # TODO: send heartbeat to all non leader nodes
     for node in range(n):
         if node != pid:
-            # e.g.: SEND 2 Heartbeat 0
-            print(f"{SEND} {node} {HeartBeat} {pid}")
+            # e.g.: SEND 2 Heartbeat 7
+            print(f"{SEND} {node} {HeartBeat} {pstate.term}")
 
 
 def startElection():
