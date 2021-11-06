@@ -43,7 +43,6 @@ def IamFollower():
     monitorStdin = threading.Thread(target=followerOnReceive, args=())
     monitorStdin.start()
     monitorStdin.join(timeout=TIMEOUT)
-    monitorStdin.join(timeout=0.001)
     if hasHB == False:
         pstate.state = CANDIDATE
     else:
@@ -93,7 +92,6 @@ def IamCandidate():
     monitorCandidate = threading.Thread(target=candidateReceive, args=())
     monitorCandidate.start()
     monitorCandidate.join(timeout=TIMEOUT)
-    monitorCandidate.join(timeout=0.001)
     # send RPC Request Vote, start the election
     if hasElected[pstate.term] == False:
         startElection()
