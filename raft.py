@@ -2,15 +2,22 @@ import time
 import sys
 from state import State
 from collections import defaultdict
+import random
 # raft node script file.
 CANDIDATE = 'CANDIDATE'
 LEADER = 'LEADER'
 FOLLOWER = 'FOLLOWER'
 
 # Message type
+SEND = "SEND"
+RECEIVE = "RECEIVE"
 RequestRPC = "RequestVotes"
 RequestRPCResponse = "RequestVoteResponse"
 HeartBeat = "Heartbeat"
+
+STATE_term = "STATE term="
+STATE_state = "STATE state="
+STATE_leader = "STATE leader="
 
 last_heard = time.time()
 pid = int(sys.argv[1])
@@ -18,6 +25,10 @@ n = int(sys.argv[2])  # num of nodes in total
 majority = n // 2 + 1  # majority of the cluster
 pstate = State()
 hasElected = defaultdict(bool, False)
+
+# Every process have different timeout between 4-8 sec
+TIMEOUT = 4 + 4 * random.uniform(0, 1)
+HB_TIMEOUT = 2
 
 
 print(f"Starting raft node {pid}", file=sys.stderr)
@@ -43,7 +54,9 @@ def IamFollower():
         # reset　timeout
         last_heard = time.time()
         return
-    if time.time()*1000 - last_heard*1000 > 4:
+
+    # If didn't receive HB after timeout, follower become candidate
+    if time.time() - last_heard > TIMEOUT:
         pstate.state = CANDIDATE
         return
 
@@ -51,11 +64,22 @@ def IamFollower():
 def IamLeader():
     # send hearbeat to other nodes
     sendHB()
-    time.sleep(2)
+    time.sleep(HB_TIMEOUT)
 
 
 def IamCandidate():
+    '''
+    If i am candidate:
+    1. start election if i haven't started electon.
+    2. if i've started election, I wait for response. 
+        if timeout, start new election
+        if get major votes, i'm leader
+        if get voteRequest from higher term, i become follower
+    '''
+
+    # DEBUG: the program stuck at the following line
     line = sys.stdin.readline()
+
     if RequestRPC in line:
         # TODO: send refuse if term <= myterm, else agree
         line = line.strip("\n")
@@ -84,18 +108,50 @@ def IamCandidate():
         return
     # send RPC Request Vote, start the election
     if hasElected[pstate.term] == False:
-        election()
+        startElection()
         hasElected[pstate.term] = True
 
 
 def sendHB():
-  # TODO: send heartbeat to all non leader nodes
-    pass
+    '''
+    '''
+    # TODO: send heartbeat to all non leader nodes
+    for node in range(n):
+        if node != pid:
+            # e.g.: SEND 2 Heartbeat 0
+            print(f"{SEND} {node} {HeartBeat} {pid}")
 
 
-def election():
-  # TODO: start an election
-    pass
+def startElection():
+    '''
+    Every time starting a election, I do the following:
+    set me to candidate
+    output STATE leader=null -Campuswire#607
+    increase term
+    vote for myself
+    send requestVote RPCs to all other nodes
+    '''
+    # TODO: start an election
+
+    # set my state to CANDIDATE
+    pstate.state = CANDIDATE
+    print(f"{STATE_state}{pstate.state}")
+
+    # set leader to None
+    pstate.leader = None
+    print(f"{STATE_leader}{pstate.leader}")
+
+    # increase my term
+    pstate.term += 1
+    print(f"{STATE_term}{pstate.term}")
+
+    # vote for myself
+    pstate.votes = 1
+
+    # send requestVote RPC
+    for node in range(n):
+        if node != pid:
+            print(f"{SEND} {node} {RequestRPC} {pstate.term}")
 
 
 while True:
