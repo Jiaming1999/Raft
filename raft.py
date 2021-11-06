@@ -1,5 +1,6 @@
 import time
 import sys
+import threading
 from state import State
 from collections import defaultdict
 import random
@@ -19,12 +20,13 @@ STATE_term = "STATE term="
 STATE_state = "STATE state="
 STATE_leader = "STATE leader="
 
-last_heard = time.time()
 pid = int(sys.argv[1])
 n = int(sys.argv[2])  # num of nodes in total
 majority = n // 2 + 1  # majority of the cluster
 pstate = State()
 hasElected = defaultdict(bool, False)
+hasHB = False
+shouldElect = False
 
 # Every process have different timeout between 4-8 sec
 TIMEOUT = 4 + 4 * random.uniform(0, 1)
@@ -36,7 +38,20 @@ print(f"Starting raft node {pid}", file=sys.stderr)
 
 def IamFollower():
     # receive hb from leader and rpc from leader
-    global last_heard
+    # If didn't receive HB after timeout, follower become candidate
+    global hasHB
+    monitorStdin = threading.Thread(target=followerOnReceive, args=())
+    monitorStdin.start()
+    monitorStdin.join(timeout=TIMEOUT)
+    if hasHB == False:
+        pstate.state = CANDIDATE
+    else:
+        hasHB = False
+
+
+def followerOnReceive():
+    global pstate
+    global hasHB
     line = sys.stdin.readline()
     if RequestRPC in line:
         # send agree if not vote before, else refuse
@@ -52,12 +67,7 @@ def IamFollower():
         return
     elif HeartBeat in line:
         # reset　timeout
-        last_heard = time.time()
-        return
-
-    # If didn't receive HB after timeout, follower become candidate
-    if time.time() - last_heard > TIMEOUT:
-        pstate.state = CANDIDATE
+        hasHB = True
         return
 
 
@@ -78,6 +88,19 @@ def IamCandidate():
     '''
 
     # DEBUG: the program stuck at the following line
+
+    monitorCandidate = threading.Thread(target=candidateReceive, args=())
+    monitorCandidate.start()
+    monitorCandidate.join(timeout=TIMEOUT)
+    # send RPC Request Vote, start the election
+    if hasElected[pstate.term] == False:
+        startElection()
+        hasElected[pstate.term] = True
+
+
+def candidateReceive():
+    global pstate
+    global shouldElect
     line = sys.stdin.readline()
 
     if RequestRPC in line:
@@ -106,10 +129,6 @@ def IamCandidate():
             pstate.state = LEADER
             pstate.votes = 0
         return
-    # send RPC Request Vote, start the election
-    if hasElected[pstate.term] == False:
-        startElection()
-        hasElected[pstate.term] = True
 
 
 def sendHB():
