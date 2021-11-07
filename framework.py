@@ -2,19 +2,23 @@ import asyncio
 import re
 from collections import defaultdict
 import json
+from sys import stderr
 DEBUG = True
 try:
     import aioconsole
 except ImportError:
     DEBUG = False
 
+
 async def log(message):
     if DEBUG:
         await aioconsole.aprint(asyncio.get_event_loop().time(), message)
 
+
 def alog(message):
     if DEBUG:
         asyncio.create_task(log(message))
+
 
 class Process:
     def __init__(self, pid, network, subproc):
@@ -46,6 +50,7 @@ class Process:
             if not line:
                 break
             if line.startswith(b"SEND"):
+                print(f"receive {line}", file=stderr)
                 _, dst, msg = line.strip().split(b' ', 2)
                 dst = dst.decode()
                 self.network.send(self.pid, dst, msg)
@@ -56,7 +61,8 @@ class Process:
                 if m := re.match(rb'(.*)\[(.*)\]', var):
                     dict_name = m.group(1)
                     index = m.group(2)
-                    self.state[dict_name.decode()][index.decode()] = decoded_value
+                    self.state[dict_name.decode()][index.decode()
+                                                   ] = decoded_value
                 else:
                     self.state[var.decode()] = decoded_value
                 self.update_state()
@@ -64,6 +70,7 @@ class Process:
     async def writer(self):
         while True:
             (src, msg) = await self.message_queue.get()
+            print(f"sending receive", file=stderr)
             line = f"RECEIVE {src} ".encode() + msg + b"\n"
             await log(f"{self.pid}<{line.decode().strip()}")
             self.subproc.stdin.write(line)
@@ -79,9 +86,9 @@ class Process:
         self.writer_task.cancel()
         self.subproc.terminate()
 
-
     def update_state(self):
-        pass # to be overridden in derived classes
+        pass  # to be overridden in derived classes
+
 
 class Network:
     def __init__(self):
@@ -105,13 +112,14 @@ class Network:
         self.message_count += 1
         self.byte_count += len(msg)
         if dst not in self.processes:
-            alog(f"sending a message from {src} to {dst} but {dst} is not registered")
+            alog(
+                f"sending a message from {src} to {dst} but {dst} is not registered")
             return
 
         if self.partition and self.partition[src] != self.partition[dst]:
             alog("dropping message from {src} to {dst} due to partition")
             return
-            
+
         self.processes[dst].send_message(src, msg)
 
     def set_partition(self, *partitions):
@@ -122,14 +130,15 @@ class Network:
         """
         self.partition = {}
         # partition maps from server to partition number
-        for i,part in enumerate(partitions):
-            for server in part: 
+        for i, part in enumerate(partitions):
+            for server in part:
                 self.partition[server] = i
         # yeah this could've been a comprehension
 
     def repair_partition(self):
         """ resets to no partition """
         self.partition = None
+
 
 async def main():
     import sys
