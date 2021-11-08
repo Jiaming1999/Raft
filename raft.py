@@ -24,43 +24,56 @@ pid = int(sys.argv[1])
 n = int(sys.argv[2])  # num of nodes in total
 majority = n // 2 + 1  # majority of the cluster
 pstate = State()
-hasElected = set([])
-hasHB = False
-shouldElect = False
+hasTimeout = set([])
+follower_read = None
+candidate_read = None
+
 
 # Every process have different timeout between 4-8 sec
-TIMEOUT = 4
-HB_TIMEOUT = 2
+ELECTION_TIMEOUT = (pid + 1) * 0.5
+TIMEOUT = 2
+HB_TIMEOUT = 1
 
 
 print(f"Starting raft node {pid}", file=sys.stderr)
 print(f"timeoutis {TIMEOUT}", file=sys.stderr)
 
 
+def print_term():
+    print(f"{STATE_term}{pstate.term}", flush=True)
+
+
+def print_state():
+    print(f"{STATE_state}\"{pstate.state}\"", flush=True)
+
+
+def print_leader():
+    print(f"{STATE_leader}\"{pstate.leader}\"", flush=True)
+
+
 def IamFollower():
     # receive hb from leader and rpc from leader
     # If didn't receive HB after timeout, follower become candidate
-    global hasHB
     print(f"I am follower {pid}", file=sys.stderr)
     monitorStdin = threading.Thread(target=followerOnReceive, args=())
     monitorStdin.start()
     monitorStdin.join(timeout=TIMEOUT)
-    if hasHB == False:
-        print(f"change to candidate", file=sys.stderr)
+    if follower_read is None:
         pstate.state = CANDIDATE
-    else:
-        hasHB = False
+        hasTimeout.add(pstate.term)
+        return
 
 
 def followerOnReceive():
     global pstate
-    global hasHB
-    line = sys.stdin.readline()
-    print(f"reading something as follower {line}", file=sys.stderr)
-    if RequestRPC in line:
+    global follower_read
+    follower_read = sys.stdin.readline()
+    if pstate.term in hasTimeout:
+        return
+    if RequestRPC in follower_read:
         # i response to candidate
         # send agree if not vote before, else refuse(No refuse, only timeout)
-        line = line.strip("\n")
+        line = follower_read.strip("\n")
         content = line.split(" ")
         heardFrom = int(content[1])
         term = int(content[3])
@@ -73,21 +86,20 @@ def followerOnReceive():
                 f"{SEND} {heardFrom} {RequestRPCResponse} {term} {true}", flush=True)
             # update my term to the latest term
             pstate.term = term
+            print_term()
         return
-    elif HeartBeat in line:
+    elif HeartBeat in follower_read:
         # I response to leader
-        line = line.strip("\n")
+        line = follower_read.strip("\n")
         content = line.split(" ")
         heardFrom = int(content[1])
         term = int(content[3])
 
         # reset　timeout
-        hasHB = True
 
         # update term and print term
         pstate.term = term
-        print(f"{STATE_term}{pstate.term}", flush=True)
-
+        print_term()
         # update state and print state
         pstate.state = FOLLOWER
         print_state()
@@ -97,14 +109,6 @@ def followerOnReceive():
         # update lastheard time
 
         return
-
-
-def print_state():
-    print(f"{STATE_state}\"{pstate.state}\"", flush=True)
-
-
-def print_leader():
-    print(f"{STATE_leader}\"{pstate.leader}\"", flush=True)
 
 
 def IamLeader():
@@ -124,17 +128,7 @@ def IamCandidate():
         if get voteRequest from higher term, i become follower
     '''
     global pstate
-   # DEBUG: the program stuck at the following line
-    print(f"I am candidate", file=sys.stderr)
-    time.sleep(random.randint(0, 4))
-
-    # send RPC Request Vote, start the election
-    if pstate.leader is None:
-        startElection()
-    else:
-        pstate.state = FOLLOWER
-        return
-
+    startElection()
     line = sys.stdin.readline()
     print(f"reading {line} as candidate", file=sys.stderr)
     if RequestRPC in line:
@@ -151,9 +145,9 @@ def IamCandidate():
             print(
                 f"{SEND} {heardFrom} {RequestRPCResponse} {term} {true}", flush=True)
             # print term state
-            # print(f"{STATE_term}{pstate.term}", flush=True)
+            print(f"{STATE_term}{pstate.term}", flush=True)
             # # print follower state
-            # print(f"{STATE_state}{pstate.state}", flush=True)
+            print(f"{STATE_state}\"{pstate.state}\"", flush=True)
         return
     elif RequestRPCResponse in line:
         line = line.strip('\n')
@@ -177,7 +171,6 @@ def IamCandidate():
 
 def candidateReceive():
     global pstate
-    global shouldElect
     line = sys.stdin.readline()
     print(f"reading {line} as candidate", file=sys.stderr)
     if RequestRPC in line:
@@ -260,12 +253,6 @@ def startElection():
 
 
 while True:
-    # print(f"SEND {(pid+1)%n} PING {pid}", flush=True)
-    # line = sys.stdin.readline()
-    # if line is None:
-    #     break
-    # print(f"Got {line.strip()}", file=sys.stderr)
-    # time.sleep(2)
     if pstate.state == CANDIDATE:
         IamCandidate()
     elif pstate.state == FOLLOWER:
