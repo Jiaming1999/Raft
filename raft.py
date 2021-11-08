@@ -86,19 +86,25 @@ def followerOnReceive():
 
         # update term and print term
         pstate.term = term
-        # print(f"{STATE_term}{pstate.term}")
+        print(f"{STATE_term}{pstate.term}", flush=True)
 
         # update state and print state
         pstate.state = FOLLOWER
-        # print(f"{STATE_state}{pstate.state}")
-
+        print_state()
         # update leader
         pstate.leader = heardFrom
-        # print(f"{STATE_leader}{pstate.leader}")
-
+        print_leader()
         # update lastheard time
 
         return
+
+
+def print_state():
+    print(f"{STATE_state}\"{pstate.state}\"", flush=True)
+
+
+def print_leader():
+    print(f"{STATE_leader}\"{pstate.leader}\"", flush=True)
 
 
 def IamLeader():
@@ -120,7 +126,7 @@ def IamCandidate():
     global pstate
    # DEBUG: the program stuck at the following line
     print(f"I am candidate", file=sys.stderr)
-    time.sleep(random.randint(4, 8))
+    time.sleep(random.randint(0, 4))
 
     # send RPC Request Vote, start the election
     if pstate.leader is None:
@@ -161,8 +167,11 @@ def IamCandidate():
             pstate.state = LEADER
             pstate.votes = 0
             pstate.leader = pid
-            # print(f"{STATE_state}{pstate.state}", flush=True)
-            # print(f"{STATE_leader}{pstate.leader}", flush=True)
+            print_state()
+            print_leader()
+        return
+    elif HeartBeat in line:
+        pstate.state = FOLLOWER
         return
 
 
@@ -201,9 +210,11 @@ def candidateReceive():
             pstate.state = LEADER
             pstate.votes = 0
             pstate.leader = pid
-
-            # print(f"{STATE_state}{pstate.state}", flush=True)
-            # print(f"{STATE_leader}{pstate.leader}", flush=True)
+            print_leader()
+            print_state()
+        return
+    elif HeartBeat in line:
+        pstate.state = FOLLOWER
         return
 
 
@@ -245,7 +256,6 @@ def startElection():
     # send requestVote RPC
     for node in range(n):
         if node != pid:
-            print("I am sending", file=sys.stderr)
             print(f"SEND {node} {RequestRPC} {pstate.term}", flush=True)
 
 
