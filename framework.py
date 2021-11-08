@@ -50,7 +50,7 @@ class Process:
             if not line:
                 break
             if line.startswith(b"SEND"):
-                # print(f"receive {line}", file=stderr)
+                # print(f"frameword readfrom {self.pid}:{line}", file=stderr)
                 _, dst, msg = line.strip().split(b' ', 2)
                 dst = dst.decode()
                 self.network.send(self.pid, dst, msg)
@@ -70,8 +70,8 @@ class Process:
     async def writer(self):
         while True:
             (src, msg) = await self.message_queue.get()
-            # print(f"sending receive", file=stderr)
             line = f"RECEIVE {src} ".encode() + msg + b"\n"
+            # print(f"framework output stdin:{line}", file=stderr)
             await log(f"{self.pid}<{line.decode().strip()}")
             self.subproc.stdin.write(line)
             await self.subproc.stdin.drain()
