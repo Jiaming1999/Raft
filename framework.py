@@ -61,9 +61,12 @@ class Process:
                 if m := re.match(rb'(.*)\[(.*)\]', var):
                     dict_name = m.group(1)
                     index = m.group(2)
+
                     self.state[dict_name.decode()][index.decode()
                                                    ] = decoded_value
                 else:
+                    # print(f"decoded_value={decoded_value} {type(decoded_value)}",
+                    #       file=stderr, flush=True)
                     self.state[var.decode()] = decoded_value
                 self.update_state()
 

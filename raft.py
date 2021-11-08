@@ -21,14 +21,12 @@ HeartBeatReply = "AppendEntriesResponse"
 true = "true"
 false = "false"
 
-# STATE_term = "STATE term="
-# STATE_state = "STATE state="
-# STATE_leader = "STATE leader="
 
 pid = int(sys.argv[1])
 n = int(sys.argv[2])  # num of nodes in total
 majority = n // 2 + 1  # majority of the cluster
 pstate = newState()
+pstate.pid = pid
 hasElected = set([])
 shouldElect = False
 # last_heard = time.time()
@@ -39,15 +37,16 @@ mutex = threading.Lock()
 
 # TIMEOUT = 0.15 + 0.15 * random.uniform(0, 1)
 weight = 1
-HB_TIMEOUT = 0.05 * weight
+HB_TIMEOUT = 0.3 * weight
 
 
-print(f"Starting raft node {pid}", file=sys.stderr)
-print(f"timeout is randome", file=sys.stderr)
+# print(f"Starting raft node {pid}", file=sys.stderr)
+# print(f"timeout is randome", file=sys.stderr)
 
 
 def random_timeout():
-    return (0.15 + 0.15 * random.uniform(0, 1)) * weight
+    # return (0.15 + 0.15 * random.uniform(0, 1)) * weight
+    return pid + 1
 
 
 def print_term(term):
@@ -61,6 +60,9 @@ def print_state(state):
 
 
 def print_leader(leader):
+    if leader == None:
+        print(f'STATE leader=null', flush=True)
+        return
     print(f'STATE leader="{leader}"', flush=True)
     return
 
@@ -68,6 +70,9 @@ def print_leader(leader):
 def become_follower(term, leader):
     global pstate
     if pstate.term != term:
+        pstate.leader = None
+        print_leader(pstate.leader)
+
         pstate.term = term
         print_term(pstate.term)
 
@@ -75,8 +80,12 @@ def become_follower(term, leader):
         pstate.state = FOLLOWER
         print_state(pstate.state)
 
+    # print(f"{pid}: parameter leader={leader} myoldleader={pstate.leader}",
+    #       file=sys.stderr, flush=True)
     if pstate.leader != leader:
         pstate.leader = leader
+        # print(f"{pid} has new leader={leader} term={term}",
+        #       file=sys.stderr, flush=True)
         print_leader(pstate.leader)
 
     pstate.voteFor = -1
@@ -87,6 +96,8 @@ def become_follower(term, leader):
 def become_leader(term):
     global pstate
     if pstate.term != term:
+        pstate.leader = None
+        print_leader(pstate.leader)
         pstate.term = term
         print_term(pstate.term)
 
@@ -123,10 +134,16 @@ def response_RequestVote(line):
         # send my agree to sender
         print(
             f"{SEND} {heardFrom} {RequestRPCResponse} {pstate.term} {true}", flush=True)
+        # print(f"{pid} voteFor {heardFrom}, {pid}'s current state:",
+        #       file=sys.stderr, flush=True)
+        # pstate.print_newState()
     else:
         # refuse
         print(
             f"{SEND} {heardFrom} {RequestRPCResponse} {pstate.term} {false}", flush=True)
+        # print(f"{pid} refuseVote {heardFrom}, {pid}'s current state:",
+        #       file=sys.stderr, flush=True)
+        # pstate.print_newState()
 
 
 def response_heartbeat(line):
@@ -143,18 +160,29 @@ def response_heartbeat(line):
         become_follower(term, heardFrom)
 
     if term == pstate.term:
-        if pstate != FOLLOWER:
+        if pstate.state != FOLLOWER:
             become_follower(term, heardFrom)
+        if pstate.leader != heardFrom:
+            pstate.leader = heardFrom
+            print_leader(pstate.leader)
+
         pstate.election_reset_time = time.time()
         print(
             f"{SEND} {heardFrom} {HeartBeatReply} {pstate.term} {true}", flush=True)
+        # print(f"{pid}'s current leader={pstate.leader}",
+        #       file=sys.stderr, flush=True)
+        # print(f"{pid} agreeHB from {heardFrom}, {pid}'s current state:",
+        #       file=sys.stderr, flush=True)
+        pstate.print_newState()
     else:
         print(f"{SEND} {heardFrom} {HeartBeatReply} {pstate.term} {false}", flush=True)
+        # print(f"{pid} refuseHB from {heardFrom}, {pid}'s current state:",
+        #       file=sys.stderr, flush=True)
+        # pstate.print_newState()
 
 
 def start_election():
     global pstate
-    print(f"{pid} start election", file=sys.stderr, flush=True)
     # set my state to CANDIDATE
     if pstate.state != CANDIDATE:
         pstate.state = CANDIDATE
@@ -174,10 +202,13 @@ def start_election():
     pstate.votes = 1
     pstate.voteFor = pid
 
+    print(f"{pid} start election at term={pstate.term}",
+          file=sys.stderr, flush=True)
+
     # send requestVote RPC
     for node in range(n):
         if node != pid:
-            print(f"{pid} request votes", file=sys.stderr, flush=True)
+            # print(f"{pid} request votes", file=sys.stderr, flush=True)
             print(f"{SEND} {node} {RequestRPC} {pstate.term}", flush=True)
 
 
@@ -220,7 +251,7 @@ def IamLeader():
     global pstate
     global received_line_handled
     global received_line
-    print(f"I am leader {pid}", file=sys.stderr, flush=True)
+    # print(f"I am leader {pid}", file=sys.stderr, flush=True)
     sendHB()
     time.sleep(HB_TIMEOUT)
     if not received_line_handled:
@@ -260,9 +291,10 @@ def IamCandidate():
 
     # handle restart election
     if time.time() - pstate.election_reset_time > random_timeout():
-        print(f"{pid} as candidate handle={received_line_handled} recv={received_line}",
+        # print(f"{pid} as candidate handle={received_line_handled} recv={received_line}",
+        #       file=sys.stderr, flush=True)
+        print(f"{pid} restart election at term {pstate.term}",
               file=sys.stderr, flush=True)
-        print(f"{pid} restart election", file=sys.stderr, flush=True)
         start_election()
 
     # handle received messages
@@ -273,7 +305,7 @@ def IamCandidate():
         received_line_handled = True
         mutex.release()
 
-        print(f"candidate {pid} reading {line}", file=sys.stderr, flush=True)
+        # print(f"candidate {pid} reading {line}", file=sys.stderr, flush=True)
         if RequestRPC in line:
             response_RequestVote(line)
         elif RequestRPCResponse in line:
@@ -289,11 +321,13 @@ def IamCandidate():
             elif term == pstate.term:
                 if result == true:
                     pstate.votes += 1
+                    print(f"{pid} has {pstate.votes} votes",
+                          file=sys.stderr, flush=True)
                     if pstate.votes >= majority:
                         become_leader(pstate.term)
+                        print(f"{pid} become leader at term={pstate.term}",
+                              file=sys.stderr, flush=True)
 
-            print(f"{pid} has {pstate.votes} votes",
-                  file=sys.stderr, flush=True)
         elif HeartBeat in line:
             response_heartbeat(line)
 
