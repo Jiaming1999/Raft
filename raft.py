@@ -17,7 +17,7 @@ RECEIVE = "RECEIVE"
 RequestRPC = "RequestVotes"
 RequestRPCResponse = "RequestVoteResponse"
 HeartBeat = "AppendEntries"
-HeartBeatReply = "AppendEntriesResponse"
+HeartBeatReply = "AppendEntryResponse"
 true = "true"
 false = "false"
 
@@ -287,7 +287,7 @@ def IamLeader():
             result = content[-1]
 
             if result == 'false':
-                become_follower(term, None)
+                res_become_follower(term, None)
                 return
         elif RequestRPC in line:
             response_RequestVote(line)
