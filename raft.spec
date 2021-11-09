@@ -5,7 +5,7 @@ block_cipher = None
 
 
 a = Analysis(['raft.py'],
-             pathex=[],
+             pathex=['/Users/joelzhang/workspace/Raft'],
              binaries=[],
              datas=[],
              hiddenimports=[],

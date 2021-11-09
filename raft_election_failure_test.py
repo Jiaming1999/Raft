@@ -1,10 +1,8 @@
-import framework
 import asyncio
 import sys
-from collections import defaultdict
-import alog
-from logging import INFO, CRITICAL, DEBUG, ERROR
 import raft_test
+import alog
+from logging import INFO, ERROR
 
 
 async def main():
@@ -13,23 +11,41 @@ async def main():
         command = sys.argv[2:]
     else:
         command = ["./raft"]
+
     group = raft_test.RaftGroup(n)
     await alog.init(INFO)
 
     await group.start(command)
 
-    await alog.log(INFO, f"Waiting for a leader to be elected")
+    await alog.log(INFO, "Waiting for a leader to be elected")
     await group.wait_for_normal_op(n, 0)
 
     if len(group.leaders) > 1:
         await alog.log(ERROR, "### Error!  more than 1 term with a leader despite no failures!")
-        await asyncio.sleep(5)
+        await alog.log(ERROR, f"leaders: {group.leaders}")
         return
 
     term, leader = max(group.leaders.items())
-
     await alog.log(INFO, f"# Successfully elected {leader} for term {term}")
-    await alog.log(INFO, f"### Election test passed")
+
+    await alog.log(INFO, f"# Stopping leader {leader}, waiting for next one to be elected")
+
+    group.stop(leader)
+
+    await group.wait_for_normal_op(n-1, term)
+
+    if len(group.leaders) > 2:
+        await alog.log(ERROR, "### Error!  more than 2 terms with a leader!")
+        return
+
+    term2, leader2 = max(group.leaders.items())
+
+    if leader2 == leader:
+        await alog.log(ERROR, "### Error! new leader cannot be stopped process!")
+        return
+
+    await alog.log(INFO, f"# Successfully elected {leader2} for term {term2}")
+    await alog.log(INFO, "### Election after failure test passed!")
 
     group.stop_all()
 
