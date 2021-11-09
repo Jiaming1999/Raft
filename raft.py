@@ -67,6 +67,24 @@ def print_leader(leader):
     return
 
 
+def res_become_follower(term, leader):
+    global pstate
+    if pstate.term != term:
+        pstate.leader = None
+        print_leader(pstate.leader)
+
+        pstate.term = term
+        print_term(pstate.term)
+
+    if pstate.state != FOLLOWER:
+        pstate.state = FOLLOWER
+        print_state(pstate.state)
+
+    pstate.voteFor = -1
+    pstate.votes = 0
+    pstate.election_reset_time = time.time()
+
+
 def become_follower(term, leader):
     global pstate
     if pstate.term != term:
@@ -125,7 +143,7 @@ def response_RequestVote(line):
 
     # update my term if received higher term
     if term > pstate.term:
-        become_follower(term, pstate.leader)
+        res_become_follower(term, pstate.leader)
 
     if term == pstate.term and (pstate.voteFor == -1 or pstate.voteFor == heardFrom):
         # TODO: agree
@@ -266,9 +284,10 @@ def IamLeader():
             content = line.split(" ")
             heardFrom = content[1]
             term = int(content[3])
+            result = content[-1]
 
-            if term > pstate.term:
-                become_follower(term, heardFrom)
+            if result == 'false':
+                become_follower(term, None)
                 return
         elif RequestRPC in line:
             response_RequestVote(line)
