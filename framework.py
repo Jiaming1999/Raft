@@ -2,19 +2,10 @@ import asyncio
 import re
 from collections import defaultdict
 import json
-DEBUG = True
-try:
-    import aioconsole
-except ImportError:
-    DEBUG = False
+import sys
+import alog
+from logging import INFO, ERROR, WARN
 
-async def log(message):
-    if DEBUG:
-        await aioconsole.aprint(asyncio.get_event_loop().time(), message)
-
-def alog(message):
-    if DEBUG:
-        asyncio.create_task(log(message))
 
 class Process:
     def __init__(self, pid, network, subproc):
@@ -39,33 +30,37 @@ class Process:
         """
         read messages, process them, and send them to the network
         """
-        await log(f"Starting reader {self.pid}")
-        while True:
-            line = await self.subproc.stdout.readline()
-            await log(f"{self.pid}>{line.decode().strip()}")
-            if not line:
-                break
-            if line.startswith(b"SEND"):
-                _, dst, msg = line.strip().split(b' ', 2)
-                dst = dst.decode()
-                self.network.send(self.pid, dst, msg)
-            elif line.startswith(b"STATE"):
-                _, stateline = line.strip().split(b' ', 1)
-                var, value = stateline.split(b'=', 1)
-                decoded_value = json.loads(value)
-                if m := re.match(rb'(.*)\[(.*)\]', var):
-                    dict_name = m.group(1)
-                    index = m.group(2)
-                    self.state[dict_name.decode()][index.decode()] = decoded_value
-                else:
-                    self.state[var.decode()] = decoded_value
-                self.update_state()
+        try:
+            while True:
+                line = await self.subproc.stdout.readline()
+                await alog.log(INFO, f"{self.pid}>{line.decode().strip()}")
+                if not line:
+                    break
+                if line.startswith(b"SEND"):
+                    _, dst, msg = line.strip().split(b' ', 2)
+                    dst = dst.decode()
+                    self.network.send(self.pid, dst, msg)
+                elif line.startswith(b"STATE"):
+                    _, stateline = line.strip().split(b' ', 1)
+                    var, value = stateline.split(b'=', 1)
+                    decoded_value = json.loads(value)
+                    if m := re.match(rb'(.*)\[(.*)\]', var):
+                        dict_name = m.group(1)
+                        index = m.group(2)
+                        self.update_state(dict_name.decode(),
+                                          decoded_value, index.decode())
+                    else:
+                        self.update_state(var.decode(), decoded_value)
+        except Exception as e:
+            await alog.log(ERROR, f"Got exception {type(e)} {e} while processing line {line} on {self.pid}")
+            await asyncio.sleep(10)
+            sys.exit(1)
 
     async def writer(self):
         while True:
             (src, msg) = await self.message_queue.get()
             line = f"RECEIVE {src} ".encode() + msg + b"\n"
-            await log(f"{self.pid}<{line.decode().strip()}")
+            await alog.log(INFO, f"{self.pid}<{line.decode().strip()}")
             self.subproc.stdin.write(line)
             await self.subproc.stdin.drain()
 
@@ -79,9 +74,9 @@ class Process:
         self.writer_task.cancel()
         self.subproc.terminate()
 
+    def update_state(self, var, value, index=None):
+        pass  # to be overridden in derived classes
 
-    def update_state(self):
-        pass # to be overridden in derived classes
 
 class Network:
     def __init__(self):
@@ -105,13 +100,15 @@ class Network:
         self.message_count += 1
         self.byte_count += len(msg)
         if dst not in self.processes:
-            alog(f"sending a message from {src} to {dst} but {dst} is not registered")
+            alog.log_no_wait(
+                WARN, f"sending a message from {src} to {dst} but {dst} is not registered")
             return
 
         if self.partition and self.partition[src] != self.partition[dst]:
-            alog("dropping message from {src} to {dst} due to partition")
+            alog.log_no_wait(
+                INFO, f"dropping message from {src} to {dst} due to partition")
             return
-            
+
         self.processes[dst].send_message(src, msg)
 
     def set_partition(self, *partitions):
@@ -122,8 +119,8 @@ class Network:
         """
         self.partition = {}
         # partition maps from server to partition number
-        for i,part in enumerate(partitions):
-            for server in part: 
+        for i, part in enumerate(partitions):
+            for server in part:
                 self.partition[server] = i
         # yeah this could've been a comprehension
 
@@ -131,14 +128,16 @@ class Network:
         """ resets to no partition """
         self.partition = None
 
-async def main():
-    import sys
 
+async def main():
+    await alog.init()
     network = Network()
+    tasks = []
     for pid in range(int(sys.argv[1])):
-        await Process.create(str(pid), network, *sys.argv[2:], str(pid), sys.argv[1])
+        p = await Process.create(str(pid), network, *sys.argv[2:], str(pid), sys.argv[1])
+        tasks += [p.reader_task, p.writer_task]
+
+    await asyncio.gather(*tasks)
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.create_task(main())
-    loop.run_forever()
+    asyncio.get_event_loop().run_until_complete(main())
