@@ -9,3 +9,5 @@ Name of student 2: Jiaming Zhang
 NetID of student 2: jz32
 
 Repo URL: https://github.com/Jiaming1999/Raft
+
+Commit to be graded: dfacd21
