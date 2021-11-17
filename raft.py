@@ -429,12 +429,12 @@ def IamCandidate():
             elif term == pstate.term:
                 if result == true:
                     pstate.votes += 1
-                    print(f"{pid} has {pstate.votes} votes",
-                          file=sys.stderr, flush=True)
+                    # print(f"{pid} has {pstate.votes} votes",
+                    #       file=sys.stderr, flush=True)
                     if pstate.votes >= majority:
                         become_leader(pstate.term)
-                        print(f"{pid} become leader at term={pstate.term}",
-                              file=sys.stderr, flush=True)
+                        # print(f"{pid} become leader at term={pstate.term}",
+                        #       file=sys.stderr, flush=True)
 
         elif HeartBeat in line:
             response_heartbeat(line)
