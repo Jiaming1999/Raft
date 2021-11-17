@@ -18,7 +18,6 @@ class newState:
         self.node_count = 0
         self.log = []  # log start from 0 index, it store tuple (term, entry)
         self.commitIndex = -1
-        self.lastApplied = -1
         self.nextIndex = []
         self.matchIndex = []
 

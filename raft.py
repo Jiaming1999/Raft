@@ -72,8 +72,6 @@ def print_log(log_idx, term, entry):
 
 
 def print_commitIndex(commitIndex):
-    # print(f'{pid} STATE commitIndex={commitIndex}',
-    #       flush=True, file=sys.stderr)
     print(f'STATE commitIndex={commitIndex+1}', flush=True)
     return
 
@@ -109,12 +107,8 @@ def become_follower(term, leader):
         pstate.state = FOLLOWER
         print_state(pstate.state)
 
-    # print(f"{pid}: parameter leader={leader} myoldleader={pstate.leader}",
-    #       file=sys.stderr, flush=True)
     if pstate.leader != leader:
         pstate.leader = leader
-        # print(f"{pid} has new leader={leader} term={term}",
-        #       file=sys.stderr, flush=True)
         print_leader(pstate.leader)
 
     pstate.voteFor = -1
@@ -264,7 +258,6 @@ def handle_heartbeatReply(line):
 
     nextIndex = int(content[4])
     len_entries = int(content[5])
-    commitIndex = int(content[6])
 
     if term > pstate.term:
         res_become_follower(term, None)
@@ -318,7 +311,6 @@ def start_election():
     # send requestVote RPC
     for node in range(n):
         if node != pid:
-            # print(f"{pid} request votes", file=sys.stderr, flush=True)
             print(f"{SEND} {node} {RequestRPC} {pstate.term}", flush=True)
 
 
@@ -338,7 +330,6 @@ def IamFollower():
         received_line_handled = True
         mutex.release()
 
-        # print(f"follower {pid} reading {line}", file=sys.stderr, flush=True)
         followerOnReceive(line)
 
     if time.time() - pstate.election_reset_time > random_timeout():
