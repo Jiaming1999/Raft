@@ -148,12 +148,19 @@ def response_RequestVote(line):
     content = line.split(" ")
     heardFrom = int(content[1])
     term = int(content[3])
+    last_log_index = int(content[4])
+    last_log_term = int(content[5])
 
     # update my term if received higher term
     if term > pstate.term:
         res_become_follower(term, pstate.leader)
 
-    if term == pstate.term and (pstate.voteFor == -1 or pstate.voteFor == heardFrom):
+    my_log_index = len(pstate.log) - 1
+    my_log_term = -1
+    if my_log_index != -1:
+        my_log_term = pstate.log[my_log_index][0]
+    if term == pstate.term and (pstate.voteFor == -1 or pstate.voteFor == heardFrom) \
+            and ((last_log_term == my_log_term and last_log_index >= my_log_index) or last_log_term > my_log_term):
         # TODO: agree
         pstate.voteFor = heardFrom
         pstate.election_reset_time = time.time()
@@ -305,13 +312,19 @@ def start_election():
     pstate.votes = 1
     pstate.voteFor = pid
 
-    print(f"{pid} start election at term={pstate.term}",
-          file=sys.stderr, flush=True)
+    # print(f"{pid} start election at term={pstate.term}",
+    #       file=sys.stderr, flush=True)
+
+    last_log_index = len(pstate.log) - 1
+    last_log_term = -1
+    if last_log_index != -1:
+        last_log_term = pstate.log[last_log_index][0]
 
     # send requestVote RPC
     for node in range(n):
         if node != pid:
-            print(f"{SEND} {node} {RequestRPC} {pstate.term}", flush=True)
+            print(
+                f"{SEND} {node} {RequestRPC} {pstate.term} {last_log_index} {last_log_term}", flush=True)
 
 
 def IamFollower():
