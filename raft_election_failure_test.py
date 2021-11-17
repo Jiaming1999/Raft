@@ -6,10 +6,7 @@ from logging import INFO, ERROR
 import raft_election_test
 
 
-
-async def main(n, group):
-    term, leader = await raft_election_test.elect_leader(n, group)
-
+async def elect_new_leader(n, group, term, leader):
     await alog.log(INFO, f"# Stopping leader {leader}, waiting for next one to be elected")
 
     group.stop(leader)
@@ -23,15 +20,23 @@ async def main(n, group):
     if len(group.leaders) > 2:
         await alog.log(ERROR, "### Error!  more than 2 terms with a leader!")
         await alog.log(ERROR, f"leaders: {group.leaders}")
-        return
+        raise RuntimeError("Leaader election error")
 
     term2, leader2 = max(group.leaders.items())
 
     if leader2 == leader:
         await alog.log(ERROR, "### Error! new leader cannot be stopped process!")
-        return
+        raise RuntimeError("Leaader election error")
 
     await alog.log(INFO, f"# Successfully elected {leader2} for term {term2}")
+
+    return term2, leader2
+
+async def main(n, group):
+    term, leader = await raft_election_test.elect_leader(n, group)
+
+    await elect_new_leader(n, group, term, leader)
+
     await alog.log(INFO, "### Election after failure test passed!")
 
 if __name__ == "__main__":

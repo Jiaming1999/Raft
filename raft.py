@@ -6,6 +6,7 @@ from state import State
 import random
 from collections import defaultdict
 from newState import newState
+import re
 # raft node script file.
 CANDIDATE = 'CANDIDATE'
 LEADER = 'LEADER'
@@ -14,6 +15,7 @@ FOLLOWER = 'FOLLOWER'
 # Message type
 SEND = "SEND"
 RECEIVE = "RECEIVE"
+LOG = "LOG"
 RequestRPC = "RequestVotes"
 RequestRPCResponse = "RequestVoteResponse"
 HeartBeat = "AppendEntries"
@@ -27,13 +29,10 @@ n = int(sys.argv[2])  # num of nodes in total
 majority = n // 2 + 1  # majority of the cluster
 pstate = newState()
 pstate.pid = pid
-hasElected = set([])
-shouldElect = False
-# last_heard = time.time()
+pstate.node_count = n
 received_line_handled = True
 received_line = None
 mutex = threading.Lock()
-# Every process have different timeout between 4-8 sec
 
 # TIMEOUT = 0.15 + 0.15 * random.uniform(0, 1)
 weight = 1
@@ -64,6 +63,18 @@ def print_leader(leader):
         print(f'STATE leader=null', flush=True)
         return
     print(f'STATE leader="{leader}"', flush=True)
+    return
+
+
+def print_log(log_idx, term, entry):
+    # our log start from index 0, log is supposed to start from index 1
+    print(f'STATE log[{log_idx+1}]=[{term},"{entry}"]', flush=True)
+
+
+def print_commitIndex(commitIndex):
+    # print(f'{pid} STATE commitIndex={commitIndex}',
+    #       flush=True, file=sys.stderr)
+    print(f'STATE commitIndex={commitIndex+1}', flush=True)
     return
 
 
@@ -131,6 +142,9 @@ def become_leader(term):
     pstate.votes = 0
     pstate.election_reset_time = time.time()
 
+    # handling log table
+    pstate.init_leader_params()
+
 
 def response_RequestVote(line):
     # response to candidate
@@ -166,16 +180,34 @@ def response_RequestVote(line):
 
 def response_heartbeat(line):
     # I response to leader
+    global pstate
+
     line = line.strip("\n")
     content = line.split(" ")
     heardFrom = int(content[1])
     term = int(content[3])
-
-    # reset　timeout
-    # last_heard = time.time()
+    last_log_index = int(content[4])
+    last_log_term = int(content[5])
+    commitIndex = int(content[-2])
+    nextIndex = content[-1]
+    list1 = line.split("[")[1]
+    list2 = list1.split("]")[0]
+    list3 = list(re.split(",| |\(|\)|'", list2))
+    rest_entries = []
+    pair = []
+    for string in list3:
+        if len(string) > 0:
+            if len(string) < 4:
+                pair.append(int(string))
+            else:
+                pair.append(string)
+                rest_entries.append(tuple(pair))
+                pair = []
 
     if term > pstate.term:
         become_follower(term, heardFrom)
+
+    agreeLeader = "false"
 
     if term == pstate.term:
         if pstate.state != FOLLOWER:
@@ -185,18 +217,78 @@ def response_heartbeat(line):
             print_leader(pstate.leader)
 
         pstate.election_reset_time = time.time()
-        print(
-            f"{SEND} {heardFrom} {HeartBeatReply} {pstate.term} {true}", flush=True)
-        # print(f"{pid}'s current leader={pstate.leader}",
-        #       file=sys.stderr, flush=True)
-        # print(f"{pid} agreeHB from {heardFrom}, {pid}'s current state:",
-        #       file=sys.stderr, flush=True)
-        pstate.print_newState()
-    else:
-        print(f"{SEND} {heardFrom} {HeartBeatReply} {pstate.term} {false}", flush=True)
-        # print(f"{pid} refuseHB from {heardFrom}, {pid}'s current state:",
-        #       file=sys.stderr, flush=True)
-        # pstate.print_newState()
+
+        if last_log_index < 0 or (last_log_index < len(pstate.log) and last_log_term == pstate.log[last_log_index][0]):
+            agreeLeader = "true"
+            log_append_index = last_log_index + 1
+            local_entry_index = 0
+            while True:
+                if len(pstate.log) <= log_append_index or len(rest_entries) <= local_entry_index or pstate.log[log_append_index][0] != rest_entries[local_entry_index][0]:
+                    break
+                log_append_index += 1
+                local_entry_index += 1
+
+            if len(rest_entries) > local_entry_index:
+                pstate.log = pstate.log[:log_append_index] + \
+                    rest_entries[local_entry_index:]
+
+                # print(f"{pid} log {pstate.log}", file=sys.stderr)
+
+                for cur_idx in range(log_append_index, len(pstate.log)):
+                    print_log(cur_idx, pstate.term, pstate.log[cur_idx][1])
+
+            if commitIndex > pstate.commitIndex:
+                # print(
+                #     f"{pid} receive receive leader commitidx{commitIndex} myidx{pstate.commitIndex}", file=sys.stderr)
+                pstate.commitIndex = min(len(pstate.log)-1, commitIndex)
+                print_commitIndex(pstate.commitIndex)
+    print(f"{SEND} {heardFrom} {HeartBeatReply} {pstate.term} {nextIndex} {len(rest_entries)} {commitIndex} {agreeLeader}", flush=True)
+
+
+def response_log(line):
+    global pstate
+    line = line.strip('\n')
+    content = line.split(" ")
+    entry = content[1]
+    pstate.log.append((pstate.term, entry))
+    print_log(len(pstate.log)-1, pstate.term, entry)
+
+
+def handle_heartbeatReply(line):
+    global pstate
+    line = line.strip('\n')
+    content = line.split(" ")
+    heardFrom = int(content[1])
+    term = int(content[3])
+    result = content[-1]
+
+    nextIndex = int(content[4])
+    len_entries = int(content[5])
+    commitIndex = int(content[6])
+
+    if term > pstate.term:
+        res_become_follower(term, None)
+        return
+
+    if term == pstate.term:
+        if result == 'false':
+            pstate.nextIndex[heardFrom] = nextIndex - 1
+            return
+
+        else:
+            pstate.nextIndex[heardFrom] = nextIndex + len_entries
+            pstate.matchIndex[heardFrom] = pstate.nextIndex[heardFrom] - 1
+            old_commitIndex = pstate.commitIndex
+            for i in range(old_commitIndex+1, len(pstate.log)):
+                if pstate.log[i][0] == pstate.term:
+                    count = 1
+                    for node in range(n):
+                        if pstate.matchIndex[node] >= i:
+                            count += 1
+                    if count >= majority:
+                        pstate.commitIndex = i
+            if pstate.commitIndex != old_commitIndex:
+                print_commitIndex(pstate.commitIndex)
 
 
 def start_election():
@@ -271,28 +363,25 @@ def IamLeader():
     global received_line
     # print(f"I am leader {pid}", file=sys.stderr, flush=True)
     sendHB()
-    time.sleep(HB_TIMEOUT)
-    if not received_line_handled:
-        mutex.acquire()
-        line = received_line
-        received_line = None
-        received_line_handled = True
-        mutex.release()
+    start_time = time.time()
+    cur_time = time.time()
+    while cur_time - start_time < HB_TIMEOUT and pstate.state == LEADER:
+        cur_time = time.time()
+        if not received_line_handled:
+            mutex.acquire()
+            line = received_line
+            received_line = None
+            received_line_handled = True
+            mutex.release()
 
-        if HeartBeatReply in line:
-            line = line.strip('\n')
-            content = line.split(" ")
-            heardFrom = content[1]
-            term = int(content[3])
-            result = content[-1]
-
-            if result == 'false':
-                res_become_follower(term, None)
-                return
-        elif RequestRPC in line:
-            response_RequestVote(line)
-        elif HeartBeat in line:
-            response_heartbeat(line)
+            if HeartBeatReply in line:
+                handle_heartbeatReply(line)
+            elif RequestRPC in line:
+                response_RequestVote(line)
+            elif HeartBeat in line:
+                response_heartbeat(line)
+            elif LOG in line:
+                response_log(line)
 
 
 def IamCandidate():
@@ -355,10 +444,18 @@ def sendHB():
     '''
     '''
     # TODO: send heartbeat to all non leader nodes
+    global pstate
     for node in range(n):
         if node != pid:
+            last_log_idx = pstate.nextIndex[node] - 1
+            last_log_term = -1
+            if last_log_idx != -1:
+                last_log_term = pstate.log[last_log_idx][0]
+            rest_entries = pstate.log[pstate.nextIndex[node]:]
+
             # e.g.: SEND 2 Heartbeat 7
-            print(f"{SEND} {node} {HeartBeat} {pstate.term}", flush=True)
+            print(
+                f"{SEND} {node} {HeartBeat} {pstate.term} {last_log_idx} {last_log_term} {rest_entries} {pstate.commitIndex} {pstate.nextIndex[node]}", flush=True)
 
 
 def receive_stdin():
@@ -367,24 +464,11 @@ def receive_stdin():
     '''
     global received_line
     global received_line_handled
-    count = 0
     while True:
-        # if pstate.state == CANDIDATE:
-
-        #     print(f"{pid} as candidate handled={received_line_handled}, in while",
-        #           file=sys.stderr, flush=True)
         mutex.acquire()
-        # if pstate.state == CANDIDATE:
-        #     print(f"{pid} as candidate handled={received_line_handled}, in mutex",
-        #           file=sys.stderr, flush=True)
         if received_line_handled:
-            # print(f"{pid} read stdin {count} time",
-            #       file=sys.stderr, flush=True)
             received_line = sys.stdin.readline()
-            # print(f"{pid} thread read:{received_line}",
-            #       flush=True, file=sys.stderr)
             received_line_handled = False
-            count += 1
         mutex.release()
 
 

@@ -5,8 +5,7 @@ import sys
 OUTPUT = None
 MIN_LEVEL = DEBUG
 
-
-async def init(min_level=DEBUG, stream=sys.stdout):
+async def init(min_level = DEBUG, stream=sys.stdout):
     global MIN_LEVEL
     global OUTPUT
     MIN_LEVEL = min_level
@@ -18,13 +17,12 @@ async def init(min_level=DEBUG, stream=sys.stdout):
     w_transport, w_protocol = await loop.connect_write_pipe(asyncio.streams.FlowControlMixin, stream)
     OUTPUT = asyncio.StreamWriter(w_transport, w_protocol, reader, loop)
 
-
 async def log(level, message):
     if level >= MIN_LEVEL:
         OUTPUT.write(f"{asyncio.get_event_loop().time()} {message}\n".encode())
         await OUTPUT.drain()
 
-
 def log_no_wait(level, message):
     if level >= MIN_LEVEL:
         asyncio.create_task(log(level, message))
+

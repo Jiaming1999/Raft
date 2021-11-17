@@ -19,10 +19,10 @@ class Process:
         self.writer_task = asyncio.create_task(self.writer())
 
     @classmethod
-    async def create(cls, pid, network, command, *args):
+    async def create(cls, pid, network, command, *args, **kwargs):
         subproc = await asyncio.create_subprocess_exec(command, *args, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE)
 
-        self = cls(pid, network, subproc)
+        self = cls(pid, network, subproc, **kwargs)
         return self
 
     async def reader(self):
