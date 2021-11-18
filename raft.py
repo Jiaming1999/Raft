@@ -69,7 +69,7 @@ def print_leader(leader):
 def print_log(log_idx, term, entry):
     # our log start from index 0, log is supposed to start from index 1
     print(f'STATE log[{log_idx+1}]=[{term},"{entry}"]', flush=True)
-
+    print(f'STATE log[{log_idx+1}]=[{term},"{entry}"]', file=sys.stderr,flush=True)
 
 def print_commitIndex(commitIndex):
     print(f'STATE commitIndex={commitIndex+1}', flush=True)
@@ -324,11 +324,11 @@ def IamFollower():
         '''
         handle received message
         '''
-        mutex.acquire()
+        # mutex.acquire()
         line = received_line
         received_line = None
         received_line_handled = True
-        mutex.release()
+        # mutex.release()
 
         followerOnReceive(line)
 
@@ -359,11 +359,11 @@ def IamLeader():
     while cur_time - start_time < HB_TIMEOUT and pstate.state == LEADER:
         cur_time = time.time()
         if not received_line_handled:
-            mutex.acquire()
+            # mutex.acquire()
             line = received_line
             received_line = None
             received_line_handled = True
-            mutex.release()
+            # mutex.release()
 
             if HeartBeatReply in line:
                 handle_heartbeatReply(line)
@@ -398,13 +398,13 @@ def IamCandidate():
 
     # handle received messages
     if not received_line_handled:
-        mutex.acquire()
+        # mutex.acquire()
         line = received_line
         received_line = None
         received_line_handled = True
-        mutex.release()
+        # mutex.release()
 
-        # print(f"candidate {pid} reading {line}", file=sys.stderr, flush=True)
+        print(f"candidate {pid} reading {line}", file=sys.stderr, flush=True)
         if RequestRPC in line:
             response_RequestVote(line)
         elif RequestRPCResponse in line:
@@ -456,11 +456,11 @@ def receive_stdin():
     global received_line
     global received_line_handled
     while True:
-        mutex.acquire()
+        # mutex.acquire()
         if received_line_handled:
             received_line = sys.stdin.readline()
             received_line_handled = False
-        mutex.release()
+        # mutex.release()
 
 
 monitorPipeline = threading.Thread(target=receive_stdin, args=(), daemon=True)
