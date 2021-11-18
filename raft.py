@@ -69,7 +69,7 @@ def print_leader(leader):
 def print_log(log_idx, term, entry):
     # our log start from index 0, log is supposed to start from index 1
     print(f'STATE log[{log_idx+1}]=[{term},"{entry}"]', flush=True)
-    print(f'STATE log[{log_idx+1}]=[{term},"{entry}"]', file=sys.stderr,flush=True)
+    # print(f'STATE log[{log_idx+1}]=[{term},"{entry}"]', file=sys.stderr,flush=True)
 
 def print_commitIndex(commitIndex):
     print(f'STATE commitIndex={commitIndex+1}', flush=True)
