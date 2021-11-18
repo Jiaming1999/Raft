@@ -467,8 +467,8 @@ monitorPipeline = threading.Thread(target=receive_stdin, args=(), daemon=True)
 monitorPipeline.start()
 
 while True:
+    time.sleep(0.001)
     try:
-
         if pstate.state == CANDIDATE:
             IamCandidate()
         elif pstate.state == FOLLOWER:
