@@ -1,4 +1,5 @@
 __pycache__
+/build
 /alog.py
 /framework.py
 /pinger.py
