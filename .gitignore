@@ -1,2 +1,13 @@
 __pycache__
-
+/alog.py
+/framework.py
+/pinger.py
+/raft_election_failure_test.py
+/raft_election_test.py
+/raft_log_follower_failure_test.py
+/raft_log_leader_failure_test.py
+/raft_log_partition_test.py
+/raft_log5_test.py
+/raft_simple_log_test.py
+/raft_partition_test.py
+/raft_test.py
